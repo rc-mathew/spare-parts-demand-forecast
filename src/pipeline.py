@@ -42,9 +42,9 @@ def load_raw(csv=None, cache="data/raw_service_data.csv"):
 
         url = URL.create(
             "mysql+pymysql",
-            username=os.environ["DB_USER"],
-            password=os.environ["DB_PASSWORD"],
-            host=os.environ["DB_HOST"],
+            username=os.environ["DB_USER"].strip(),
+            password=os.environ["DB_PASSWORD"].strip(),
+            host=os.environ["DB_HOST"].strip(),
             port=int(os.getenv("DB_PORT", 3306)),
             database=os.environ["DB_NAME"],
         )
