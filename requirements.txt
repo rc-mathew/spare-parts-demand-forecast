@@ -1,0 +1,12 @@
+pandas>=2.2
+numpy
+scikit-learn
+lightgbm
+sqlalchemy
+pymysql
+joblib
+matplotlib
+seaborn
+streamlit
+reportlab
+jupyter
