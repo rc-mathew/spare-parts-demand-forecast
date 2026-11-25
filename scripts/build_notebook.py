@@ -12,7 +12,7 @@ Logic lives in `src/pipeline.py` (also used by `run.py` and the Streamlit app). 
 
 **Standalone:** the next two cells install packages and write `src/pipeline.py` (the full pipeline) so this notebook runs alone in Colab or Jupyter.
 **Data access:** if `data/raw_service_data.csv` exists it is used. Otherwise the notebook asks for the MySQL host/user/password. No credentials are stored in this notebook."""),
-C("!pip install -q lightgbm sqlalchemy pymysql"),
+C("!pip install -q lightgbm sqlalchemy pymysql\nimport os; os.makedirs(\"src\", exist_ok=True)"),
 C("%%writefile src/pipeline.py\n" + SRC),
 C("""import os, getpass
 os.makedirs("src", exist_ok=True); open("src/__init__.py", "a").close()
