@@ -64,11 +64,17 @@ def norm_item(text):
 
 
 def clean(df):
-    df = df.rename(columns=lambda c: c.strip()).rename(columns=RAW_COLS)
+    # match columns ignoring case, spaces, dots and underscores ("Invoice Date" == "invoice_date")
+    key = lambda c: re.sub(r"[^a-z0-9]", "", str(c).lower())
+    want = {key(k): v for k, v in RAW_COLS.items()}
+    df = df.rename(columns={c: want[key(c)] for c in df.columns if key(c) in want})
+    missing = set(RAW_COLS.values()) - set(df.columns)
+    if missing:
+        raise KeyError(f"columns not found: {sorted(missing)}. Columns present: {list(df.columns)}")
     for c in ("invoice_date", "job_card_date"):
-        df[c] = pd.to_datetime(df[c], errors="coerce")
+        df[c] = pd.to_datetime(df[c], errors="coerce", dayfirst=True)  # data uses dd-mm-yy
     df["invoice_date"] = df["invoice_date"].fillna(df["job_card_date"])
-    df["km"] = pd.to_numeric(df["km"], errors="coerce")
+    df["km"] = pd.to_numeric(df["km"].astype(str).str.replace(",", ""), errors="coerce")
     df = df.dropna(subset=["invoice_date", "line_text"]).copy()
     df["item"] = df["line_text"].map(norm_item)
     # repeated identical lines are kept: there is no quantity column, a repeat can mean qty > 1
