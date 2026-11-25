@@ -9,4 +9,6 @@ matplotlib
 seaborn
 streamlit
 reportlab
+statsmodels
+prophet
 jupyter

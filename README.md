@@ -28,12 +28,14 @@ No DB access? Export `service_data` to `data/raw_service_data.csv` and run witho
 ## Method
 - Demand = invoice lines per item per week. Item = `INVOICE LINE TEXT` lower-cased, digits removed, first 4 words. Top 25 items modelled.
 - Direct 4-week forecast: all features use data at least 4 weeks old (lags 4/5/6/8/12, rolling mean/std, last odometer + 10k-km bin, shop job volume, week-of-year). A test checks no look-ahead.
+- Service/labour/supply lines (`NON_PART` regex in `src/pipeline.py`) are excluded. Check the list against your data.
 - Model: LightGBM, Poisson loss. Hold-out: last 12 weeks. Baselines: demand 4 weeks ago; 4-week moving average.
+- Also run: `TimeSeriesSplit` rolling CV, ARIMA with Fourier seasonality and Prophet on the top 8 parts. Recommendations in the notebook and PDF are generated from the real results.
 - Metrics: MAE, RMSE, WAPE, MAPE on non-zero weeks, overstock/stockout events and units. Order quantity = rounded forecast.
 
 ## Known limits (read before submitting)
 - **No service-centre column** in the schema. Default is one group (`ALL`). `python run.py --centre partner` uses Business Partner Name as a proxy, which is a customer, not a centre.
 - **No quantity column**: demand counts lines, not units.
 - Labour and parts share one text field, so labour lines appear as items.
-- ARIMA/Prophet/LSTM from the brief not run. One global LightGBM chosen for simplicity.
+- LSTM not run (short series, heavy dependency). Classical models cover only the top 8 parts.
 - Event-count metrics are noisy on low-volume parts: compare units too. The 20% target may or may not be met on real data; `metrics.json` says which.

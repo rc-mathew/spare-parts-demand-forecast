@@ -3,6 +3,7 @@ import nbformat as nbf
 
 M, C = nbf.v4.new_markdown_cell, nbf.v4.new_code_cell
 SRC = open("src/pipeline.py").read()
+REP = open("report.py").read()
 cells = [
 M("""# Spare-Part Demand Forecasting - NewX Services (Ref PM-PR-0027)
 **Goal:** forecast spare-part demand per part x service centre x week, 4 weeks ahead, and beat a naive baseline by >= 20% on overstock and stockout events.
@@ -10,10 +11,11 @@ M("""# Spare-Part Demand Forecasting - NewX Services (Ref PM-PR-0027)
 **Flow:** load -> clean -> EDA -> weekly panel -> features -> model vs baselines -> importance -> forecast -> recommendations.
 Logic lives in `src/pipeline.py` (also used by `run.py` and the Streamlit app). Run this notebook from the repo root or `notebooks/`.
 
-**Standalone:** the next two cells install packages and write `src/pipeline.py` (the full pipeline) so this notebook runs alone in Colab or Jupyter.
+**Standalone:** the next cells install packages and write `src/pipeline.py` (the full pipeline) and `report.py` (PDF builder) so this notebook runs alone in Colab or Jupyter.
 **Data access:** if `data/raw_service_data.csv` exists it is used. Otherwise the notebook asks for the MySQL host/user/password. No credentials are stored in this notebook."""),
-C("!pip install -q lightgbm sqlalchemy pymysql\nimport os; os.makedirs(\"src\", exist_ok=True)"),
+C("!pip install -q lightgbm sqlalchemy pymysql reportlab statsmodels\n!pip install -q prophet\nimport os; os.makedirs(\"src\", exist_ok=True)"),
 C("%%writefile src/pipeline.py\n" + SRC),
+C("%%writefile report.py\n" + REP),
 C("""import os, getpass
 os.makedirs("src", exist_ok=True); open("src/__init__.py", "a").close()
 if not os.path.exists("data/raw_service_data.csv") and not os.getenv("DB_HOST"):
@@ -37,6 +39,9 @@ print(f"{len(raw)} raw rows -> {len(df)} after cleaning")
 print(df.isna().mean().round(3).to_string())
 df[["invoice_date","vehicle_model","km","line_text","item"]].head(10)"""),
 M("## 2. EDA"),
+M("**Non-part lines.** Service, labour and supply lines are flagged (`NON_PART` regex in the pipeline) and excluded from the forecast. Check the lists: edit `NON_PART` if a real part is excluded or a service slips through."),
+C("""print("excluded as non-parts:"); display(df[~df.is_part].item.value_counts().head(15))
+print("kept as parts:"); display(df[df.is_part].item.value_counts().head(25))"""),
 C("""print("date range:", df.invoice_date.min().date(), "->", df.invoice_date.max().date())
 print("vehicles:", df.vehicle_no.nunique(), "| models:", df.vehicle_model.nunique(), "| partners:", df.partner.nunique(), "| distinct items:", df.item.nunique())
 df.km.describe().round(0)"""),
@@ -81,6 +86,15 @@ C("""sel = test.assign(pred=pred).groupby("item").apply(lambda d: pd.Series({
     "actual": d.demand.sum(), "WAPE_model": (d.demand - d.pred).abs().sum() / max(d.demand.sum(), 1),
     "WAPE_naive": (d.demand - d.lag_4).abs().sum() / max(d.demand.sum(), 1)})).sort_values("actual", ascending=False)
 sel.round(3).head(15)"""),
+M("## 5b. Time-series cross-validation\nRolling-origin folds over weeks (`TimeSeriesSplit`): the model is retrained on everything before each fold. Mean and std show how stable the gain over naive is."),
+C("""cvt = P.cv(pd.concat([train, test]))
+display(cvt.round(3))
+cvt.drop(columns="test_from").agg(["mean", "std"]).round(3)"""),
+M("## 5c. ARIMA (annual Fourier terms) and Prophet\nPer-series classical models on the top 8 parts (centres summed), 4-week-ahead rolling origins over the hold-out weeks, compared with LightGBM and naive on the same rows. LSTM is not run: very short series, heavy dependencies, unlikely to beat boosting."),
+C("""tp_ = test.assign(pred=pred)[["item", "centre", "week", "demand", "lag_4", "pred"]]
+cmp_tab, _ = P.classical_compare(feat, last, tp_)
+display(cmp_tab.round(3))
+print("lowest WAPE:", cmp_tab.WAPE.idxmin())"""),
 M("## 6. Feature importance"),
 C("""imp = pd.Series(model.booster_.feature_importance("gain"), index=P.FEATURES).sort_values()
 imp.plot.barh(figsize=(8, 5), title="LightGBM gain importance")"""),
@@ -91,16 +105,17 @@ display(fc.head(12))
 fc.groupby("week").predicted_demand.sum().round(1)"""),
 C("""pn = fc.groupby("part_name").predicted_demand.sum().sort_values(ascending=False).head(10)
 pn.sort_values().plot.barh(figsize=(8, 4), title="Top 10 parts: forecast demand, next 4 weeks")"""),
-M("""## 8. Business recommendations
-Fill in after reading the results above (numbers differ on the real data):
-1. **Order from `forecast.csv`** weekly; start with the highest-volume parts (chart above).
-2. **Safety stock:** add a buffer on parts where a stockout costs more than holding; the over/under trade-off table gives the dial.
-3. **Seasonal parts:** pre-stock ahead of the months the seasonality heatmap flags.
-4. **Parts with high WAPE** (per-item table): keep manual review; intermittent demand is inherently noisy.
-5. **Data gaps to close:** quantity per line, part number, service-centre ID. They are the largest accuracy and relevance limits today.
-6. **Operate:** retrain weekly with `python run.py`, track WAPE, view forecasts in `streamlit run app.py`.
-
-**Limitations:** demand counts lines, not units; centre dimension is a proxy; labour and parts share one text field; ARIMA/Prophet/LSTM not run (one global gradient-boosted model chosen for simplicity)."""),
+M("## 8. Business recommendations (generated from the results above)"),
+C("""from IPython.display import Markdown
+Markdown("\\n".join(f"{i}. {r}" for i, r in enumerate(m["recommendations"], 1)))"""),
+M("**Limitations:** demand counts lines, not units; the centre dimension is a proxy; part names come from free text; LSTM not run (short series). See the README."),
+M("## 9. PDF report"),
+C("""!python report.py
+try:
+    from google.colab import files
+    files.download("outputs/project_report.pdf"); files.download("outputs/forecast.csv")
+except ImportError:
+    pass"""),
 ]
 nb = nbf.v4.new_notebook(cells=cells, metadata={"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"}})
 nbf.write(nb, "notebooks/spare_parts_demand_forecasting.ipynb")
