@@ -2,6 +2,7 @@
 import nbformat as nbf
 
 M, C = nbf.v4.new_markdown_cell, nbf.v4.new_code_cell
+SRC = open("src/pipeline.py").read()
 cells = [
 M("""# Spare-Part Demand Forecasting - NewX Services (Ref PM-PR-0027)
 **Goal:** forecast spare-part demand per part x service centre x week, 4 weeks ahead, and beat a naive baseline by >= 20% on overstock and stockout events.
@@ -9,7 +10,15 @@ M("""# Spare-Part Demand Forecasting - NewX Services (Ref PM-PR-0027)
 **Flow:** load -> clean -> EDA -> weekly panel -> features -> model vs baselines -> importance -> forecast -> recommendations.
 Logic lives in `src/pipeline.py` (also used by `run.py` and the Streamlit app). Run this notebook from the repo root or `notebooks/`.
 
-**Data access:** set env vars `DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD` (see `.env.example`) before launching Jupyter, or drop an export at `data/raw_service_data.csv`. No credentials are stored in this notebook."""),
+**Standalone:** the next two cells install packages and write `src/pipeline.py` (the full pipeline) so this notebook runs alone in Colab or Jupyter.
+**Data access:** if `data/raw_service_data.csv` exists it is used. Otherwise the notebook asks for the MySQL host/user/password. No credentials are stored in this notebook."""),
+C("!pip install -q lightgbm sqlalchemy pymysql"),
+C("%%writefile src/pipeline.py\n" + SRC),
+C("""import os, getpass
+os.makedirs("src", exist_ok=True); open("src/__init__.py", "a").close()
+if not os.path.exists("data/raw_service_data.csv") and not os.getenv("DB_HOST"):
+    os.environ.update(DB_HOST=input("DB host: "), DB_PORT="3306", DB_NAME="project_service_data", DB_TABLE="service_data",
+                      DB_USER=input("DB user: "), DB_PASSWORD=getpass.getpass("DB password: "))"""),
 C("""import os, sys, warnings
 warnings.filterwarnings("ignore")
 if os.path.basename(os.getcwd()) == "notebooks": os.chdir("..")
